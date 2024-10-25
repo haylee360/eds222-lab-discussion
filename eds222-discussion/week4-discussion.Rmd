@@ -13,22 +13,35 @@ library(tidyverse)
 # wolves are plentiful, elk get scared and retreat to forests (high canopy height) 
 # to hide
 set.seed(54321)
-canopy_height <- rnorm(1e3, 100, sd = 10)
-wolf_density <- rnorm(1e3, 3, sd = 0.5)
+canopy_height <- rnorm(1e3, 100, sd = 10) #random var for canopy height
+wolf_density <- rnorm(1e3, 3, sd = 0.5) # random var for wolf density, wolf/km^2
+```
 
+```{r}
+# normal distribution of canopy heights
+ggplot(tibble(canopy_height), aes(canopy_height)) + geom_histogram()
+
+# normal distribution of wolf density
+ggplot(tibble(wolf_density), aes(wolf_density)) + geom_histogram()
+```
+
+
+```{r}
+# Arbitrarily choose coefficients
 beta0 <- 175  # Intercept
 beta1 <- 3.0  # Coefficient for canopy height
 beta2 <- -0.2 # Coefficient for wolf density
 beta3 <- -1.0 # Coefficient for canopy height X wolf density
+
 # Simulate!
 elk_density <- beta0 + beta1 * canopy_height + beta2 * wolf_density + 
-  beta3 * canopy_height * wolf_density + rnorm(1e3, sd = 0.5)
+  beta3 * canopy_height * wolf_density + rnorm(1e3, sd = 0.5) # last factor is random noise
 
 # Visualize
 yellowstone <- tibble(canopy_height, wolf_density, elk_density)
 ggplot(yellowstone, aes(canopy_height, elk_density, color = wolf_density)) +
   geom_point(shape = 21) +
-  scale_color_distiller(palette = "Reds") +
+  scale_color_distiller(palette = "Reds", direction = 1) +
   theme_classic()
 ```
 
@@ -58,16 +71,16 @@ beta0_hat <- coef(yellowstone_mod)[1]
 beta1_hat <- coef(yellowstone_mod)[2]
 beta2_hat <- coef(yellowstone_mod)[3]
 beta3_hat <- coef(yellowstone_mod)[4]
-prediction <- expand_grid(
-  canopy_height = seq(70, 130, length.out = 5),
-  wolf_density = c(1.5, 3, 4.5)
-) %>% 
+prediction <- expand_grid( # gives you all the combos of vectors
+  canopy_height = seq(70, 130, length.out = 5), # 5 canopy heights
+  wolf_density = c(1.5, 3, 4.5) # 3 wolf densities
+) %>% # means 15 total observations
   mutate(yhat = beta0_hat + beta1_hat * canopy_height + beta2_hat * wolf_density +
            beta3_hat * canopy_height * wolf_density)
 
 ggplot(yellowstone, aes(canopy_height, elk_density, color = wolf_density)) +
   geom_point(shape = 21) +
-  scale_color_distiller(palette = "Reds") +
+  scale_color_distiller(palette = "Reds", direction = 1) +
   geom_line(aes(y = yhat, group = wolf_density), prediction, linewidth = 2) +
   theme_classic()
 ```
