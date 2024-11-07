@@ -1,5 +1,5 @@
 ---
-title: "Untitled"
+title: "eds 220 week 6 lab"
 format: html
 editor: visual
 ---
@@ -71,21 +71,37 @@ drinking_water <- read_csv("drinking_water.csv", show_col_types = FALSE)
 
 ## Questions
 
-1.  What do you think each row represents?
+1.  What do you think each row represents?\
+    Demographics and water safety in a given district in a given year
 2.  What columns do you think represent:
-    1.  Drinking water health violations?
-    2.  Percent Black and Hispanic population in the utility district?
-    3.  Median household income in the utility district?
+    1.  Drinking water health violations?\
+        `health`
+    2.  Percent Black and Hispanic population in the utility district?\
+        `pctblack` `pcthisp`
+    3.  Median household income in the utility district?\
+        `medianincomehouse`
 3.  One column includes a *count* of drinking water health violations. How would you create a new column with a binary variable representing whether there were any violations?
 
 ```{r}
+drinking_water <- drinking_water %>% 
+  mutate(violation = if_else(health == 0, 0, 1))
 ```
 
 4.  Create a scatter plot of violations against race (percent Black population), ethnicity (percent Hispanic population), and SES (median household income). What visualization issues do we get with a scatter plot? How could you address that?\
+    Points are overplotted (too many overlapping) to see the trend. We can summarize within bins to make the pattern pop. \
 
 ```{r}
 # Make plots
+# Binned to the nearest 0.2 wide bins
+drinking_water_binned <- drinking_water %>% 
+  mutate(pcthisp = round(pcthisp *5) / 5) %>% 
+  group_by(pcthisp) %>% 
+  summarize(violation = mean(violation))
 
+
+ggplot(drinking_water, aes(pcthisp, violation)) +
+  geom_point() +
+  geom_point(data = drinking_water_binned, color = "firebrick")
 ```
 
 # Try (and fail) to use OLS
@@ -97,7 +113,7 @@ $$
 $$
 
 ```{r}
-pcthisp_lm <- lm(???)
+pcthisp_lm <- lm(violation ~ pcthisp, drinking_water)
 summary(pcthisp_lm)
 
 ```
@@ -107,7 +123,15 @@ summary(pcthisp_lm)
 1.  Plot the residuals. What pattern do you notice?
 
 ```{r}
-# Make a plot of the residuals.
+drinking_water_complete <- drop_na(drinking_water,
+                                   pcthisp,
+                                   violation)
+drinking_water_complete %>% 
+  mutate(residuals = resid(pcthisp_lm)) %>% 
+ggplot(aes(pcthisp, residuals)) +
+  geom_point() +
+  # geom_point(data = drinking_water_binned, color = "firebrick") +
+  geom_abline(intercept = coef(pcthisp_lm)[1], slope = coef(pcthisp_lm)[2])
 
 ```
 
@@ -150,39 +174,51 @@ inv_logit <- function(x) exp(x) / (1 + exp(x))
 # Likelihood of the coefficients, given the data
 likelihood_fun <- function(coefficients, data) {
   # Calculate logit(p) based on coefficients and predictor
-
+  logit_p <- coefficients["beta0"] + coefficients["beta1"] * data$pcthisp
   # Invert the logit to get p
-
+  p <- inv_logit(logit_p)
   # Use the PMF of the Bernoulli to get our log likelihoods
-
+  loglik <- dbinom(data$violation, size = 1, prob = p, log = TRUE)
   # Sum the negative log likelihood
-
+  negloglik <- -sum(loglik)
 }
 
+# coefficients to probabiltiy to density
 # Use an optimization function to get the maximum likelihood coefficients
-drinking_water_complete <- drop_na(drinking_water, pcthisp, violations)
-coef_optim <- optim(???, 
-                    ???, 
-                    data = ???)
+drinking_water_complete <- drop_na(drinking_water, pcthisp, violation)
+coef_optim <- optim(c(beta0 = 0, beta1 = 0),
+                    likelihood_fun,
+                    data = drinking_water_complete)
 
 ```
 
 ## Questions
 
-1.  What were your maximum likelihood estimates for $\hat\beta_0$ and $\hat\beta_1$?
+1.  What were your maximum likelihood estimates for $\hat\beta_0$ and $\hat\beta_1$?\
+    beta0 = -2.422124762, beta1 = 0.004398142
 
 ```{r}
 # What are the maximum likelihood estimates for our coefficients?
-# Hint: explore coef_optim
+coef_optim
+beta0_hat <- coef_optim$par[1]
+beta1_hat <- coef_optim$par[2]
 
 ```
 
-2.  What's the predicted probability of drinking water violations for communities with 0%, 50%, and 100% Hispanic population? \
+2.  What's the predicted probability of drinking water violations for communities with 0%, 50%, and 100% Hispanic population?\
     Plot the predicted probability across the whole range 0-100% Hispanic.
 
 ```{r}
 # Create and plot predictions
+logit_p <- beta0_hat + beta1_hat * c(0, 50, 100)
+p <- inv_logit(logit_p)
+p
 
+tibble(pcthisp = 0:100,
+       logit_p = beta0_hat + beta1_hat * pcthisp,
+       p = inv_logit(logit_p)) %>% 
+ggplot(aes(x = pcthisp, y = p)) +
+  geom_line()
 ```
 
 3.  How much does the probability of a drinking water violation change when percent Hispanic population increases from 10 to 20%, 45 to 55%, and 80 to 90%?
@@ -253,4 +289,3 @@ predictions <- expand_grid(
 ```
 
 3.  Interpret the predicted surface. How does SES influence the relationship between ethnicity and exposure to environmental hazards? What is the "slope" of the probability of a violation w.r.t. percent Hispanic population at low, medium, and high median household income levels?\
-
