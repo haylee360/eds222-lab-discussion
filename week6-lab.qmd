@@ -88,7 +88,7 @@ drinking_water <- drinking_water %>%
 ```
 
 4.  Create a scatter plot of violations against race (percent Black population), ethnicity (percent Hispanic population), and SES (median household income). What visualization issues do we get with a scatter plot? How could you address that?\
-    Points are overplotted (too many overlapping) to see the trend. We can summarize within bins to make the pattern pop. \
+    Points are overplotted (too many overlapping) to see the trend. We can summarize within bins to make the pattern pop.\
 
 ```{r}
 # Make plots
@@ -210,7 +210,7 @@ beta1_hat <- coef_optim$par[2]
 
 ```{r}
 # Create and plot predictions
-logit_p <- beta0_hat + beta1_hat * c(0, 50, 100)
+logit_p <- beta0_hat + beta1_hat * c(10, 55, 80)
 p <- inv_logit(logit_p)
 p
 
@@ -224,30 +224,55 @@ ggplot(aes(x = pcthisp, y = p)) +
 3.  How much does the probability of a drinking water violation change when percent Hispanic population increases from 10 to 20%, 45 to 55%, and 80 to 90%?
 
 ```{r}
+# Create and plot predictions
+logit_p <- beta0_hat + beta1_hat * c(10, 45, 80)
+p1 <- inv_logit(logit_p)
+p1
+
+logit_p <- beta0_hat + beta1_hat * c(20, 55, 90)
+p2 <- inv_logit(logit_p)
+p2
+pdiff <- p2 - p1
+
+tibble(pcthisp = 0:100,
+       logit_p = beta0_hat + beta1_hat * pcthisp,
+       p = inv_logit(logit_p)) %>% 
+ggplot(aes(x = pcthisp, y = p)) +
+  geom_line()
 ```
 
 4.  How would you interpret the coefficients? What do the slope and intercept mean in this context? Where is the relationship linear, and where is it non-linear?
-5.  Create a "DEM" of the likelihood landscape for $\beta_0$ and $\beta_1$. Choose a range of $\beta_0$ and $\beta_1$ values around your best estimates, calculate the likelihood for each combination, and create a figure with $\beta_0$ on the x-axis, $\beta_1$ on the y-axis, and the likelihood as the fill. Add a point for $(\hat\beta_0, \hat\beta_1)$.\
+
+beta0 : the probability of a drinking water violation when the percent hispanic is 0.
+
+beta1: the change in the probability of a drinking water violation for every percent change in percent hispanic.
+
+The relationship is not linear over the its entire range
+
+4.  Create a "DEM" of the likelihood landscape for $\beta_0$ and $\beta_1$. Choose a range of $\beta_0$ and $\beta_1$ values around your best estimates, calculate the likelihood for each combination, and create a figure with $\beta_0$ on the x-axis, $\beta_1$ on the y-axis, and the likelihood as the fill. Add a point for $(\hat\beta_0, \hat\beta_1)$.\
     Bonus problem: add contours!
 
 ```{r}
+# expand grid gives you a df of all the beta0s and beta1s as columns
 likelihood_dem <- expand_grid(
-  ???,
-  ???
+  beta0 = seq(-3, -2, length.out = 20), # comes from the coef[par] 
+  beta1 = seq(0, 0.01, length.out = 20)
 ) %>% 
   mutate(coefficients = mapply(function(b0, b1) c(beta0 = b0, beta1 = b1),
-                               ???, ???,
-                               SIMPLIFY = FALSE),
+                               beta0, beta1, 
+                               SIMPLIFY = FALSE), # combine these columns into a single vector. Purely based on how we wrote the earlier function.
          negloglik = sapply(coefficients, 
-                            ???, 
-                            data = ???),
-         likelihood = ???)
+                            likelihood_fun, # map likelihood func to coeff
+                            data = drinking_water_complete),
+         likelihood = exp(-negloglik)) # undoing the negative and the log
 
-ggplot(likelihood_dem, aes(???, ???, fill = ???)) +
+ggplot(likelihood_dem, aes(beta0, beta1, fill = negloglik)) +
   geom_raster() +
-  geom_point(x = ???, y = ???, color = "red")
+  geom_point(x = -2.42, y = 0.00439, color = "red")
 
 ```
+
+Our model is very sensitive to the intercept we choose. Likelihood changes alot as beta0 changes but not much as beta1 changes. Our uncertainty for beta0 is very low, so we need to really narrow CI. With beta1, CI is going to be wider.
 
 # Fit the full logistic regression model using `glm()`
 
@@ -256,7 +281,7 @@ Normally we won't need to write our own likelihood functions and use optimizatio
 Here's how to fit the same model from the previous section. Notice the formula and data arguments look very similar to what we'd use for `lm()`. But now we have to specify the response variable's "family" (i.e., the type of random variable) and the link function we want to use (logit, in our case).
 
 ```{r}
-pcthisp_glm <- glm(violations ~ pcthisp, 
+pcthisp_glm <- glm(violation ~ pcthisp, 
                    family = binomial(link = "logit"),
                    data = drinking_water)
 summary(pcthisp_glm)
@@ -268,7 +293,10 @@ summary(pcthisp_glm)
 1.  How would you fit a model that includes an interaction term between ethnicity and SES?
 
 ```{r}
-interaction_glm <- ???
+interaction_glm <- glm(violation ~ pcthisp + medianincomehouse + pcthisp:medianincomehouse, 
+# can also do violation ~ pcthisp * medianincomehouse
+                   family = binomial(link = "logit"),
+                   data = drinking_water)
 summary(interaction_glm)
 
 ```
@@ -277,15 +305,20 @@ summary(interaction_glm)
 
 ```{r}
 predictions <- expand_grid(
-  pcthisp = ???,
-  medianincomehouse = ???
+  pcthisp = 0:100,
+  medianincomehouse = seq(20000, 100000, length.out = 100)
 ) %>% 
-  mutate(violations = predict(???, 
+  mutate(violations = predict(interaction_glm, 
                               newdata = ., 
-                              type = ???))
+                              type = "response")) # response is inverted logit p
 
 # Create plot
+ggplot(predictions, aes(pcthisp, medianincomehouse, fill = violations)) + 
+  geom_raster() +
+  scale_fill_distiller(palette = "Reds", direction = 1)
 
 ```
 
-3.  Interpret the predicted surface. How does SES influence the relationship between ethnicity and exposure to environmental hazards? What is the "slope" of the probability of a violation w.r.t. percent Hispanic population at low, medium, and high median household income levels?\
+Combined effect of pcthisp and medianincome on drinking water violation probability. Seeing how these two things magnify the problem.
+
+3.Interpret the predicted surface. How does SES influence the relationship between ethnicity and exposure to environmental hazards? What is the "slope" of the probability of a violation w.r.t. percent Hispanic population at low, medium, and high median household income levels?\
