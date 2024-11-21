@@ -251,7 +251,7 @@ What's the p-value? Use `pnorm()` to get the probability of a point estimate at 
 
 ```{r}
 #| label: blood-feathers-pval
-
+2 * pnorm(-abs(beta1_est), mean = 0, sd = beta1_se)
 ```
 
 ::: callout-note
